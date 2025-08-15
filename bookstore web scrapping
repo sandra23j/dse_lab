@@ -1,0 +1,117 @@
+# To run this script, you need to install the following libraries:
+# pip install requests beautifulsoup4
+
+import requests
+import csv
+from bs4 import BeautifulSoup
+
+def scrape_books_from_website():
+    """
+    Scrapes book title, price, and star rating from a fictional books website.
+    This demonstrates collecting structured data from an unstructured HTML page.
+    The script now scrapes data from all pages of the website.
+    """
+    print("--- Starting Web Scraping Mini-Project ---")
+
+    # The URL of the website we want to scrape. This is a practice site.
+    base_url = "http://books.toscrape.com/catalogue/"
+    next_page_url = "page-1.html" # Start with the first page
+
+    all_scraped_books = []
+    page_count = 0
+
+    # The loop continues as long as there is a "Next" page link to follow.
+    while next_page_url:
+        page_count += 1
+        current_url = requests.compat.urljoin(base_url, next_page_url)
+        print(f"Scraping data from: {current_url}")
+
+        try:
+            # Send a GET request to the URL to get the HTML content.
+            response = requests.get(current_url)
+
+            # Raise an exception for bad status codes (4xx or 5xx).
+            response.raise_for_status()
+
+            # Use BeautifulSoup to parse the HTML content of the page.
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # Find all HTML elements that contain book information.
+            # Each book is contained within an <article> tag with the class 'product_pod'.
+            book_articles = soup.find_all('article', class_='product_pod')
+
+            for book in book_articles:
+                # Extract the book title from the <h3> tag's <a> tag's title attribute.
+                title = book.h3.a['title']
+
+                # Extract the price from the <p> tag with the class 'price_color'.
+                price_str = book.find('p', class_='price_color').text
+                # Clean the price string to remove the currency symbol and convert to float.
+                price = float(price_str.replace('Â£', '').strip())
+
+                # Extract the star rating. The class name itself contains the rating.
+                # Example: <p class="star-rating Three">
+                rating_class = book.find('p', class_='star-rating')['class'][1]
+                rating = rating_class
+
+                all_scraped_books.append({
+                    'title': title,
+                    'price': price,
+                    'rating': rating
+                })
+
+            # Find the link for the next page.
+            # The "Next" link is inside a li tag with the class "next".
+            next_button = soup.find('li', class_='next')
+            if next_button:
+                next_page_url = next_button.a['href']
+            else:
+                # If there's no "Next" button, we have reached the last page.
+                next_page_url = None
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching data from website: {e}")
+            return None
+        except Exception as e:
+            print(f"Error parsing HTML: {e}")
+            return None
+
+    print(f"\nSuccessfully scraped a total of {len(all_scraped_books)} books from {page_count} pages.")
+
+    return all_scraped_books
+
+def save_to_csv(data, filename):
+    """
+    Saves a list of dictionaries to a CSV file.
+    """
+    if not data:
+        print(f"No data to save to {filename}. Skipping.")
+        return
+
+    # Extract column headers from the keys of the first dictionary.
+    keys = data[0].keys()
+
+    try:
+        with open(filename, 'w', newline='', encoding='utf-8') as output_file:
+            # Create a CSV writer object.
+            dict_writer = csv.DictWriter(output_file, fieldnames=keys)
+
+            # Write the header row.
+            dict_writer.writeheader()
+
+            # Write all the data rows.
+            dict_writer.writerows(data)
+
+        print(f"Data successfully saved to {filename}")
+
+    except IOError as e:
+        print(f"Error saving data to CSV file: {e}")
+
+# --- Main execution block ---
+if __name__ == "__main__":
+    books_data = scrape_books_from_website()
+
+    if books_data:
+        save_to_csv(books_data, 'books_data.csv')
+
+    print("\n--- Process Complete ---")
