@@ -1,0 +1,85 @@
+import requests
+from bs4 import BeautifulSoup
+import csv
+import re
+
+def web_scraping():
+    offset = 0
+    all_jobs = []
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                      "AppleWebKit/537.36 (KHTML, like Gecko) "
+                      "Chrome/115.0.0.0 Safari/537.36"
+    }
+
+    while True:
+        base_url = f"https://remoteok.com/?&action=get_jobs&offset={offset}"
+        print(f"Fetching jobs at offset: {offset}")
+
+        try:
+            response = requests.get(base_url, headers=headers)
+            response.raise_for_status()
+            soup = BeautifulSoup(response.text, 'html.parser')
+
+            # Each job is in a <tr>
+            job_rows = soup.find_all('tr', {'class': 'job'})
+
+            if not job_rows:
+                print("No jobs found, stopping.")
+                break
+
+            for row in job_rows:
+                # Extract main job info
+                job_title_tag = row.find('h2', itemprop='title')
+                company_tag = row.find('h3', itemprop='name')
+                job_location_tag = row.find('div', class_='location')
+
+                if not job_title_tag or not company_tag:
+                    continue  # skip incomplete listings
+
+                job_title = job_title_tag.text.strip()
+                company = company_tag.text.strip()
+                job_location = (
+                    re.sub(r'[^A-Za-z\s]', '', job_location_tag.text.strip())
+                    if job_location_tag else "Not specified"
+                )
+
+                # Extract job features
+                job_features_tags = row.find_all('a', class_='no-border tooltip-set action-add-tag')
+                if job_features_tags:
+                    job_features = ', '.join(tag.get('aria-label', '').strip() for tag in job_features_tags)
+                else:
+                    job_features = "Not specified"
+
+                all_jobs.append({
+                    'job_title': job_title,
+                    'company': company,
+                    'job_location': job_location,
+                    'job_features': job_features
+                })
+
+            offset += 1
+
+        except Exception as e:
+            print("Error:", e)
+            break
+
+    return all_jobs
+
+def save_to_csv(data, filename):
+    if not data:
+        print("No data to save.")
+        return
+
+    keys = data[0].keys()
+    with open(filename, 'w', newline='', encoding='utf-8') as output_file:
+        dict_writer = csv.DictWriter(output_file, fieldnames=keys)
+        dict_writer.writeheader()
+        dict_writer.writerows(data)
+
+    print(f"Data saved to {filename}")
+ 
+
+if __name__ == "__main__":
+    jobs_data = web_scraping()
+    save_to_csv(jobs_data, "jobs_data.csv")
